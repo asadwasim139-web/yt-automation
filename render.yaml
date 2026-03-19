@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: yt-video-automation
+    env: python
+    buildCommand: "apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt"
+    startCommand: "gunicorn main:app"
+    envVars:
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
