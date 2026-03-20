@@ -1,25 +1,31 @@
 import os
-import sys
 import subprocess
-
-def install_ffmpeg():
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        subprocess.run(['apt-get', 'update'], capture_output=True)
-        subprocess.run(['apt-get', 'install', '-y', 'ffmpeg'], capture_output=True)
-
-install_ffmpeg()
-
-from flask import Flask, request, jsonify
 import requests
-import json
 import re
 import tempfile
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+
+TOPICS = [
+    {"title": "Top 5 Fastest Cars in the World", "items": ["Bugatti Chiron Super Sport", "Koenigsegg Jesko Absolut", "Hennessey Venom F5", "SSC Tuatara", "Rimac Nevera"]},
+    {"title": "Top 5 Tallest Buildings in the World", "items": ["Burj Khalifa Dubai", "Shanghai Tower China", "Abraj Al Bait Saudi Arabia", "Ping An Finance Center", "Lotte World Tower Korea"]},
+    {"title": "Top 5 Richest People in the World", "items": ["Elon Musk", "Jeff Bezos", "Bernard Arnault", "Bill Gates", "Mark Zuckerberg"]},
+    {"title": "Top 5 Most Beautiful Countries in the World", "items": ["Switzerland", "New Zealand", "Italy", "Norway", "Japan"]},
+    {"title": "Top 5 Biggest Animals in the World", "items": ["Blue Whale", "African Elephant", "White Rhinoceros", "Hippopotamus", "Giraffe"]},
+    {"title": "Top 5 Most Expensive Cars in the World", "items": ["Rolls Royce Boat Tail", "Bugatti La Voiture Noire", "Pagani Zonda HP Barchetta", "Lamborghini Veneno", "Koenigsegg CCXR Trevita"]},
+    {"title": "Top 5 Strongest Militaries in the World", "items": ["United States", "Russia", "China", "India", "United Kingdom"]},
+    {"title": "Top 5 Most Visited Countries in the World", "items": ["France", "Spain", "United States", "China", "Italy"]},
+    {"title": "Top 5 Fastest Animals in the World", "items": ["Cheetah", "Pronghorn Antelope", "Springbok", "Wildebeest", "Lion"]},
+    {"title": "Top 5 Most Expensive Houses in the World", "items": ["Buckingham Palace London", "Villa Leopolda France", "Antilia Mumbai", "The One Los Angeles", "Witanhurst London"]},
+    {"title": "Top 5 Deepest Oceans in the World", "items": ["Pacific Ocean", "Atlantic Ocean", "Indian Ocean", "Southern Ocean", "Arctic Ocean"]},
+    {"title": "Top 5 Longest Rivers in the World", "items": ["Nile River Africa", "Amazon River South America", "Yangtze River China", "Mississippi River USA", "Yenisei River Russia"]},
+    {"title": "Top 5 Most Powerful Currencies in the World", "items": ["Kuwaiti Dinar", "Bahraini Dinar", "Omani Rial", "Jordanian Dinar", "British Pound"]},
+    {"title": "Top 5 Rarest Gems in the World", "items": ["Pink Star Diamond", "Jadeite", "Red Diamond", "Alexandrite", "Blue Garnet"]},
+    {"title": "Top 5 Most Popular Sports in the World", "items": ["Football Soccer", "Cricket", "Basketball", "Tennis", "Volleyball"]},
+]
 
 def get_pexels_image(query):
     try:
@@ -49,128 +55,112 @@ def get_free_music(tmpdir):
     except:
         return None
 
-def create_video(script, title, tmpdir):
-    lines = [l.strip() for l in script.strip().split("\n") if l.strip()]
-    top5_lines = []
-    for line in lines:
-        clean = re.sub(r'\*+', '', line).strip()
-        clean = re.sub(r'^#+\s*', '', clean).strip()
-        if clean and len(clean) > 3:
-            top5_lines.append(clean)
+def create_slide(img_path, number, item_text, title, slide_path):
+    safe_title = title.replace("'", "").replace('"', '').replace(':', ' ')
+    safe_item = item_text.replace("'", "").replace('"', '').replace(':', ' ')
+    number_text = f"{number}. {safe_item}"
 
-    top5_lines = top5_lines[:5]
-    if not top5_lines:
-        top5_lines = [title]
-
-    slide_videos = []
-
-    for i, line in enumerate(top5_lines):
-        search_query = re.sub(r'^\d+[\.\)]\s*', '', line)
-        search_query = re.sub(r'[^\w\s]', '', search_query).strip()[:50]
-
-        img_url = get_pexels_image(search_query)
-        if not img_url:
-            img_url = get_pexels_image("nature beautiful landscape")
-
-        img_path = os.path.join(tmpdir, f"img_{i}.jpg")
-
-        if img_url:
-            download_image(img_url, img_path)
-        else:
-            subprocess.run([
-                'ffmpeg', '-y',
-                '-f', 'lavfi',
-                '-i', 'color=c=blue:size=1080x1920:rate=30',
-                '-frames:v', '1',
-                img_path
-            ], capture_output=True)
-
-        subtitle_text = line[:50].replace("'", "").replace('"', '').replace(':', ' ')
-        slide_path = os.path.join(tmpdir, f"slide_{i}.mp4")
-
-        cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1",
-            "-i", img_path,
-            "-vf", (
-                f"scale=1080:1920:force_original_aspect_ratio=increase,"
-                f"crop=1080:1920,"
-                f"drawtext=text='{subtitle_text}':fontsize=48:fontcolor=white:"
-                f"x=(w-text_w)/2:y=h-180:"
-                f"borderw=3:bordercolor=black:"
-                f"box=1:boxcolor=black@0.6:boxborderw=12"
-            ),
-            "-t", "4",
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-r", "30",
-            slide_path
-        ]
-
-        subprocess.run(cmd, capture_output=True)
-        if os.path.exists(slide_path):
-            slide_videos.append(slide_path)
-
-    if not slide_videos:
-        return None
-
-    concat_file = os.path.join(tmpdir, "concat.txt")
-    with open(concat_file, "w") as f:
-        for sv in slide_videos:
-            f.write(f"file '{sv}'\n")
-
-    silent_video = os.path.join(tmpdir, "silent_video.mp4")
-    subprocess.run([
+    cmd = [
         "ffmpeg", "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", concat_file,
-        "-c", "copy",
-        silent_video
-    ], capture_output=True)
-
-    music_path = get_free_music(tmpdir)
-    final_video = os.path.join(tmpdir, "final_video.mp4")
-
-    if music_path and os.path.exists(music_path):
-        subprocess.run([
-            "ffmpeg", "-y",
-            "-i", silent_video,
-            "-i", music_path,
-            "-map", "0:v",
-            "-map", "1:a",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-shortest",
-            "-af", "volume=0.3",
-            final_video
-        ], capture_output=True)
-    else:
-        os.rename(silent_video, final_video)
-
-    return final_video
+        "-loop", "1",
+        "-i", img_path,
+        "-vf", (
+            f"scale=1080:1920:force_original_aspect_ratio=increase,"
+            f"crop=1080:1920,"
+            f"drawtext=text='{safe_title}':fontsize=44:fontcolor=white:"
+            f"x=(w-text_w)/2:y=80:"
+            f"borderw=3:bordercolor=black:"
+            f"box=1:boxcolor=black@0.6:boxborderw=10,"
+            f"drawtext=text='{number_text}':fontsize=56:fontcolor=yellow:"
+            f"x=(w-text_w)/2:y=h-160:"
+            f"borderw=4:bordercolor=black:"
+            f"box=1:boxcolor=black@0.7:boxborderw=14"
+        ),
+        "-t", "4",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", "30",
+        slide_path
+    ]
+    subprocess.run(cmd, capture_output=True)
 
 @app.route("/create-video", methods=["POST"])
 def create_video_endpoint():
     try:
         data = request.json
-        script = data.get("script", "")
-        title = data.get("title", "Top 5 Video")
+        day_index = data.get("day_index", 0)
+
+        topic = TOPICS[day_index % len(TOPICS)]
+        title = topic["title"]
+        items = topic["items"]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            video_path = create_video(script, title, tmpdir)
+            slide_videos = []
 
-            if not video_path or not os.path.exists(video_path):
-                return jsonify({"success": False, "error": "Video creation failed"}), 500
+            for i, item in enumerate(items):
+                number = 5 - i
+                search_query = re.sub(r'[^\w\s]', '', item).strip()
 
-            with open(video_path, "rb") as f:
+                img_url = get_pexels_image(search_query)
+                if not img_url:
+                    img_url = get_pexels_image("nature landscape beautiful")
+
+                img_path = os.path.join(tmpdir, f"img_{i}.jpg")
+                if img_url:
+                    download_image(img_url, img_path)
+                else:
+                    subprocess.run([
+                        'ffmpeg', '-y', '-f', 'lavfi',
+                        '-i', 'color=c=darkblue:size=1080x1920:rate=30',
+                        '-frames:v', '1', img_path
+                    ], capture_output=True)
+
+                slide_path = os.path.join(tmpdir, f"slide_{i}.mp4")
+                create_slide(img_path, number, item, title, slide_path)
+
+                if os.path.exists(slide_path):
+                    slide_videos.append(slide_path)
+
+            if not slide_videos:
+                return jsonify({"success": False, "error": "No slides created"}), 500
+
+            concat_file = os.path.join(tmpdir, "concat.txt")
+            with open(concat_file, "w") as f:
+                for sv in slide_videos:
+                    f.write(f"file '{sv}'\n")
+
+            silent_video = os.path.join(tmpdir, "silent_video.mp4")
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", concat_file, "-c", "copy", silent_video
+            ], capture_output=True)
+
+            music_path = get_free_music(tmpdir)
+            final_video = os.path.join(tmpdir, "final_video.mp4")
+
+            if music_path and os.path.exists(music_path):
+                subprocess.run([
+                    "ffmpeg", "-y",
+                    "-i", silent_video, "-i", music_path,
+                    "-map", "0:v", "-map", "1:a",
+                    "-c:v", "copy", "-c:a", "aac",
+                    "-shortest", "-af", "volume=0.3",
+                    final_video
+                ], capture_output=True)
+            else:
+                os.rename(silent_video, final_video)
+
+            if not os.path.exists(final_video):
+                return jsonify({"success": False, "error": "Final video not created"}), 500
+
+            with open(final_video, "rb") as f:
                 video_bytes = f.read()
 
         return jsonify({
             "success": True,
             "message": "Video created successfully",
-            "video_size": len(video_bytes),
-            "title": title
+            "title": title,
+            "video_size": len(video_bytes)
         })
 
     except Exception as e:
@@ -178,13 +168,7 @@ def create_video_endpoint():
 
 @app.route("/health", methods=["GET"])
 def health():
-    ffmpeg_ok = False
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        ffmpeg_ok = True
-    except:
-        pass
-    return jsonify({"status": "ok", "ffmpeg": ffmpeg_ok})
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
