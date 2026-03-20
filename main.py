@@ -27,6 +27,12 @@ TOPICS = [
     {"title": "Top 5 Most Popular Sports in the World", "items": ["Football Soccer", "Cricket", "Basketball", "Tennis", "Volleyball"]},
 ]
 
+def clean_text(text):
+    cleaned = re.sub(r'[^a-zA-Z0-9 ]', '', text)
+    cleaned = cleaned.strip()
+    cleaned = ' '.join(cleaned.split())
+    return cleaned
+
 def get_pexels_image(query):
     try:
         headers = {"Authorization": PEXELS_API_KEY}
@@ -56,26 +62,28 @@ def get_free_music(tmpdir):
         return None
 
 def create_slide(img_path, number, item_text, title, slide_path):
-    safe_title = title.replace("'", "").replace('"', '').replace(':', ' ')
-    safe_item = item_text.replace("'", "").replace('"', '').replace(':', ' ')
-    number_text = f"{number}. {safe_item}"
+    safe_title = clean_text(title)
+    safe_item = clean_text(item_text)
+    number_text = str(number) + ". " + safe_item
+
+    vf = (
+        "scale=1080:1920:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,"
+        "drawtext=text='" + safe_title + "':fontsize=44:fontcolor=white:"
+        "x=(w-text_w)/2:y=80:"
+        "borderw=3:bordercolor=black:"
+        "box=1:boxcolor=black@0.6:boxborderw=10,"
+        "drawtext=text='" + number_text + "':fontsize=56:fontcolor=yellow:"
+        "x=(w-text_w)/2:y=h-160:"
+        "borderw=4:bordercolor=black:"
+        "box=1:boxcolor=black@0.7:boxborderw=14"
+    )
 
     cmd = [
         "ffmpeg", "-y",
         "-loop", "1",
         "-i", img_path,
-        "-vf", (
-            f"scale=1080:1920:force_original_aspect_ratio=increase,"
-            f"crop=1080:1920,"
-            f"drawtext=text='{safe_title}':fontsize=44:fontcolor=white:"
-            f"x=(w-text_w)/2:y=80:"
-            f"borderw=3:bordercolor=black:"
-            f"box=1:boxcolor=black@0.6:boxborderw=10,"
-            f"drawtext=text='{number_text}':fontsize=56:fontcolor=yellow:"
-            f"x=(w-text_w)/2:y=h-160:"
-            f"borderw=4:bordercolor=black:"
-            f"box=1:boxcolor=black@0.7:boxborderw=14"
-        ),
+        "-vf", vf,
         "-t", "4",
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
@@ -88,7 +96,7 @@ def create_slide(img_path, number, item_text, title, slide_path):
 def create_video_endpoint():
     try:
         data = request.json
-        day_index = data.get("day_index", 0)
+        day_index = int(data.get("day_index", 0))
 
         topic = TOPICS[day_index % len(TOPICS)]
         title = topic["title"]
@@ -99,13 +107,14 @@ def create_video_endpoint():
 
             for i, item in enumerate(items):
                 number = 5 - i
-                search_query = re.sub(r'[^\w\s]', '', item).strip()
+                search_query = clean_text(item)
 
                 img_url = get_pexels_image(search_query)
                 if not img_url:
                     img_url = get_pexels_image("nature landscape beautiful")
 
-                img_path = os.path.join(tmpdir, f"img_{i}.jpg")
+                img_path = os.path.join(tmpdir, "img_" + str(i) + ".jpg")
+
                 if img_url:
                     download_image(img_url, img_path)
                 else:
@@ -115,7 +124,7 @@ def create_video_endpoint():
                         '-frames:v', '1', img_path
                     ], capture_output=True)
 
-                slide_path = os.path.join(tmpdir, f"slide_{i}.mp4")
+                slide_path = os.path.join(tmpdir, "slide_" + str(i) + ".mp4")
                 create_slide(img_path, number, item, title, slide_path)
 
                 if os.path.exists(slide_path):
@@ -127,7 +136,7 @@ def create_video_endpoint():
             concat_file = os.path.join(tmpdir, "concat.txt")
             with open(concat_file, "w") as f:
                 for sv in slide_videos:
-                    f.write(f"file '{sv}'\n")
+                    f.write("file '" + sv + "'\n")
 
             silent_video = os.path.join(tmpdir, "silent_video.mp4")
             subprocess.run([
@@ -141,10 +150,14 @@ def create_video_endpoint():
             if music_path and os.path.exists(music_path):
                 subprocess.run([
                     "ffmpeg", "-y",
-                    "-i", silent_video, "-i", music_path,
-                    "-map", "0:v", "-map", "1:a",
-                    "-c:v", "copy", "-c:a", "aac",
-                    "-shortest", "-af", "volume=0.3",
+                    "-i", silent_video,
+                    "-i", music_path,
+                    "-map", "0:v",
+                    "-map", "1:a",
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-shortest",
+                    "-af", "volume=0.3",
                     final_video
                 ], capture_output=True)
             else:
