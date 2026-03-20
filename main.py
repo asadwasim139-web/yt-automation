@@ -100,7 +100,8 @@ def create_video_endpoint():
 
         with tempfile.TemporaryDirectory() as tmpdir:
             clips = []
-
+            
+            items = items[:3]
             for i, item in enumerate(items):
                 number = 5 - i
                 search_query = re.sub(r'[^a-zA-Z0-9 ]', '', item).strip()
@@ -118,7 +119,7 @@ def create_video_endpoint():
                 img_path = os.path.join(tmpdir, "slide_" + str(i) + ".jpg")
                 img.save(img_path, quality=95)
 
-                clip = ImageClip(img_path, duration=4)
+                clip = ImageClip(img_path, duration=3)
                 clips.append(clip)
 
             final_clip = concatenate_videoclips(clips, method="compose")
@@ -132,7 +133,7 @@ def create_video_endpoint():
             output_path = os.path.join(tmpdir, "final_video.mp4")
             final_clip.write_videofile(
                 output_path,
-                fps=30,
+                fps=24,
                 codec="libx264",
                 audio_codec="aac",
                 logger=None
