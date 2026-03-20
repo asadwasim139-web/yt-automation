@@ -135,7 +135,6 @@ def create_video_endpoint():
                 fps=30,
                 codec="libx264",
                 audio_codec="aac",
-                verbose=False,
                 logger=None
             )
 
