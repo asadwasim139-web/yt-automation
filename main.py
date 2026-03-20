@@ -4,8 +4,7 @@ import re
 import tempfile
 from flask import Flask, request, jsonify
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-import numpy as np
+from moviepy import ImageClip, concatenate_videoclips, AudioFileClip
 
 app = Flask(__name__)
 
@@ -42,25 +41,20 @@ def get_pexels_image(query):
     return None
 
 def download_image(url):
-    res = requests.get(url, timeout=15)
     from io import BytesIO
+    res = requests.get(url, timeout=15)
     img = Image.open(BytesIO(res.content)).convert("RGB")
     img = img.resize((1080, 1920), Image.LANCZOS)
     return img
 
 def add_text_to_image(img, title, number, item):
-    draw = ImageDraw.Draw(img)
     w, h = img.size
-
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    overlay_draw = ImageDraw.Draw(overlay)
-
-    title_font_size = 52
-    item_font_size = 64
+    draw = ImageDraw.Draw(overlay)
 
     try:
-        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", title_font_size)
-        item_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", item_font_size)
+        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 52)
+        item_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 64)
     except:
         title_font = ImageFont.load_default()
         item_font = ImageFont.load_default()
@@ -68,19 +62,17 @@ def add_text_to_image(img, title, number, item):
     title_bbox = draw.textbbox((0, 0), title, font=title_font)
     title_w = title_bbox[2] - title_bbox[0]
     title_x = (w - title_w) // 2
-    title_y = 60
 
-    overlay_draw.rectangle([title_x - 15, title_y - 10, title_x + title_w + 15, title_y + title_font_size + 10], fill=(0, 0, 0, 160))
-    overlay_draw.text((title_x, title_y), title, font=title_font, fill=(255, 255, 255, 255))
+    draw.rectangle([title_x - 15, 50, title_x + title_w + 15, 130], fill=(0, 0, 0, 160))
+    draw.text((title_x, 60), title, font=title_font, fill=(255, 255, 255, 255))
 
     item_text = str(number) + ". " + item
     item_bbox = draw.textbbox((0, 0), item_text, font=item_font)
     item_w = item_bbox[2] - item_bbox[0]
     item_x = (w - item_w) // 2
-    item_y = h - 180
 
-    overlay_draw.rectangle([item_x - 15, item_y - 10, item_x + item_w + 15, item_y + item_font_size + 10], fill=(0, 0, 0, 180))
-    overlay_draw.text((item_x, item_y), item_text, font=item_font, fill=(255, 220, 0, 255))
+    draw.rectangle([item_x - 15, h - 200, item_x + item_w + 15, h - 120], fill=(0, 0, 0, 180))
+    draw.text((item_x, h - 190), item_text, font=item_font, fill=(255, 220, 0, 255))
 
     img = img.convert("RGBA")
     img = Image.alpha_composite(img, overlay)
@@ -102,7 +94,6 @@ def create_video_endpoint():
     try:
         data = request.json
         day_index = int(data.get("day_index", 0))
-
         topic = TOPICS[day_index % len(TOPICS)]
         title = topic["title"]
         items = topic["items"]
@@ -124,23 +115,19 @@ def create_video_endpoint():
                     img = Image.new("RGB", (1080, 1920), color=(0, 50, 100))
 
                 img = add_text_to_image(img, title, number, item)
-
                 img_path = os.path.join(tmpdir, "slide_" + str(i) + ".jpg")
                 img.save(img_path, quality=95)
 
-                clip = ImageClip(img_path).set_duration(4)
+                clip = ImageClip(img_path, duration=4)
                 clips.append(clip)
-
-            if not clips:
-                return jsonify({"success": False, "error": "No clips created"}), 500
 
             final_clip = concatenate_videoclips(clips, method="compose")
 
             music_path = get_free_music(tmpdir)
             if music_path:
-                audio = AudioFileClip(music_path).subclip(0, min(20, final_clip.duration))
-                audio = audio.volumex(0.3)
-                final_clip = final_clip.set_audio(audio)
+                audio = AudioFileClip(music_path).with_subclip(0, min(20, final_clip.duration))
+                audio = audio.with_multiply_volume(0.3)
+                final_clip = final_clip.with_audio(audio)
 
             output_path = os.path.join(tmpdir, "final_video.mp4")
             final_clip.write_videofile(
