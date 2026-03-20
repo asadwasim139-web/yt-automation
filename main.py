@@ -27,16 +27,10 @@ TOPICS = [
     {"title": "Top 5 Most Popular Sports in the World", "items": ["Football Soccer", "Cricket", "Basketball", "Tennis", "Volleyball"]},
 ]
 
-def clean_text(text):
-    cleaned = re.sub(r'[^a-zA-Z0-9 ]', '', text)
-    cleaned = cleaned.strip()
-    cleaned = ' '.join(cleaned.split())
-    return cleaned
-
 def get_pexels_image(query):
     try:
         headers = {"Authorization": PEXELS_API_KEY}
-        url = f"https://api.pexels.com/v1/search?query={query}&per_page=1&orientation=portrait"
+        url = "https://api.pexels.com/v1/search?query=" + query + "&per_page=1&orientation=portrait"
         res = requests.get(url, headers=headers, timeout=10)
         data = res.json()
         if data.get("photos"):
@@ -61,19 +55,24 @@ def get_free_music(tmpdir):
     except:
         return None
 
-def create_slide(img_path, number, item_text, title, slide_path):
-    safe_title = clean_text(title)
-    safe_item = clean_text(item_text)
-    number_text = str(number) + ". " + safe_item
+def create_slide(img_path, number, item_text, title, slide_path, tmpdir, index):
+    title_file = os.path.join(tmpdir, "title_" + str(index) + ".txt")
+    item_file = os.path.join(tmpdir, "item_" + str(index) + ".txt")
+
+    with open(title_file, "w", encoding="utf-8") as f:
+        f.write(title)
+
+    with open(item_file, "w", encoding="utf-8") as f:
+        f.write(str(number) + ". " + item_text)
 
     vf = (
         "scale=1080:1920:force_original_aspect_ratio=increase,"
         "crop=1080:1920,"
-        "drawtext=text='" + safe_title + "':fontsize=44:fontcolor=white:"
+        "drawtext=textfile='" + title_file + "':fontsize=44:fontcolor=white:"
         "x=(w-text_w)/2:y=80:"
         "borderw=3:bordercolor=black:"
         "box=1:boxcolor=black@0.6:boxborderw=10,"
-        "drawtext=text='" + number_text + "':fontsize=56:fontcolor=yellow:"
+        "drawtext=textfile='" + item_file + "':fontsize=56:fontcolor=yellow:"
         "x=(w-text_w)/2:y=h-160:"
         "borderw=4:bordercolor=black:"
         "box=1:boxcolor=black@0.7:boxborderw=14"
@@ -90,7 +89,8 @@ def create_slide(img_path, number, item_text, title, slide_path):
         "-r", "30",
         slide_path
     ]
-    subprocess.run(cmd, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True)
+    return result
 
 @app.route("/create-video", methods=["POST"])
 def create_video_endpoint():
@@ -107,11 +107,11 @@ def create_video_endpoint():
 
             for i, item in enumerate(items):
                 number = 5 - i
-                search_query = clean_text(item)
+                search_query = re.sub(r'[^a-zA-Z0-9 ]', '', item).strip()
 
                 img_url = get_pexels_image(search_query)
                 if not img_url:
-                    img_url = get_pexels_image("nature landscape beautiful")
+                    img_url = get_pexels_image("nature landscape")
 
                 img_path = os.path.join(tmpdir, "img_" + str(i) + ".jpg")
 
@@ -125,7 +125,7 @@ def create_video_endpoint():
                     ], capture_output=True)
 
                 slide_path = os.path.join(tmpdir, "slide_" + str(i) + ".mp4")
-                create_slide(img_path, number, item, title, slide_path)
+                create_slide(img_path, number, item, title, slide_path, tmpdir, i)
 
                 if os.path.exists(slide_path):
                     slide_videos.append(slide_path)
