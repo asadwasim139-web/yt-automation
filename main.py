@@ -1,9 +1,11 @@
 import os
-import subprocess
 import requests
 import re
 import tempfile
 from flask import Flask, request, jsonify
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+import numpy as np
 
 app = Flask(__name__)
 
@@ -13,18 +15,18 @@ TOPICS = [
     {"title": "Top 5 Fastest Cars in the World", "items": ["Bugatti Chiron Super Sport", "Koenigsegg Jesko Absolut", "Hennessey Venom F5", "SSC Tuatara", "Rimac Nevera"]},
     {"title": "Top 5 Tallest Buildings in the World", "items": ["Burj Khalifa Dubai", "Shanghai Tower China", "Abraj Al Bait Saudi Arabia", "Ping An Finance Center", "Lotte World Tower Korea"]},
     {"title": "Top 5 Richest People in the World", "items": ["Elon Musk", "Jeff Bezos", "Bernard Arnault", "Bill Gates", "Mark Zuckerberg"]},
-    {"title": "Top 5 Most Beautiful Countries in the World", "items": ["Switzerland", "New Zealand", "Italy", "Norway", "Japan"]},
+    {"title": "Top 5 Most Beautiful Countries", "items": ["Switzerland", "New Zealand", "Italy", "Norway", "Japan"]},
     {"title": "Top 5 Biggest Animals in the World", "items": ["Blue Whale", "African Elephant", "White Rhinoceros", "Hippopotamus", "Giraffe"]},
-    {"title": "Top 5 Most Expensive Cars in the World", "items": ["Rolls Royce Boat Tail", "Bugatti La Voiture Noire", "Pagani Zonda HP Barchetta", "Lamborghini Veneno", "Koenigsegg CCXR Trevita"]},
-    {"title": "Top 5 Strongest Militaries in the World", "items": ["United States", "Russia", "China", "India", "United Kingdom"]},
-    {"title": "Top 5 Most Visited Countries in the World", "items": ["France", "Spain", "United States", "China", "Italy"]},
+    {"title": "Top 5 Most Expensive Cars", "items": ["Rolls Royce Boat Tail", "Bugatti La Voiture Noire", "Pagani Zonda HP Barchetta", "Lamborghini Veneno", "Koenigsegg CCXR Trevita"]},
+    {"title": "Top 5 Strongest Militaries", "items": ["United States", "Russia", "China", "India", "United Kingdom"]},
+    {"title": "Top 5 Most Visited Countries", "items": ["France", "Spain", "United States", "China", "Italy"]},
     {"title": "Top 5 Fastest Animals in the World", "items": ["Cheetah", "Pronghorn Antelope", "Springbok", "Wildebeest", "Lion"]},
-    {"title": "Top 5 Most Expensive Houses in the World", "items": ["Buckingham Palace London", "Villa Leopolda France", "Antilia Mumbai", "The One Los Angeles", "Witanhurst London"]},
-    {"title": "Top 5 Deepest Oceans in the World", "items": ["Pacific Ocean", "Atlantic Ocean", "Indian Ocean", "Southern Ocean", "Arctic Ocean"]},
+    {"title": "Top 5 Most Expensive Houses", "items": ["Buckingham Palace London", "Villa Leopolda France", "Antilia Mumbai", "The One Los Angeles", "Witanhurst London"]},
     {"title": "Top 5 Longest Rivers in the World", "items": ["Nile River Africa", "Amazon River South America", "Yangtze River China", "Mississippi River USA", "Yenisei River Russia"]},
-    {"title": "Top 5 Most Powerful Currencies in the World", "items": ["Kuwaiti Dinar", "Bahraini Dinar", "Omani Rial", "Jordanian Dinar", "British Pound"]},
+    {"title": "Top 5 Most Powerful Currencies", "items": ["Kuwaiti Dinar", "Bahraini Dinar", "Omani Rial", "Jordanian Dinar", "British Pound"]},
     {"title": "Top 5 Rarest Gems in the World", "items": ["Pink Star Diamond", "Jadeite", "Red Diamond", "Alexandrite", "Blue Garnet"]},
-    {"title": "Top 5 Most Popular Sports in the World", "items": ["Football Soccer", "Cricket", "Basketball", "Tennis", "Volleyball"]},
+    {"title": "Top 5 Most Popular Sports", "items": ["Football Soccer", "Cricket", "Basketball", "Tennis", "Volleyball"]},
+    {"title": "Top 5 Deepest Oceans in the World", "items": ["Pacific Ocean", "Atlantic Ocean", "Indian Ocean", "Southern Ocean", "Arctic Ocean"]},
 ]
 
 def get_pexels_image(query):
@@ -39,10 +41,50 @@ def get_pexels_image(query):
         pass
     return None
 
-def download_image(url, path):
+def download_image(url):
     res = requests.get(url, timeout=15)
-    with open(path, "wb") as f:
-        f.write(res.content)
+    from io import BytesIO
+    img = Image.open(BytesIO(res.content)).convert("RGB")
+    img = img.resize((1080, 1920), Image.LANCZOS)
+    return img
+
+def add_text_to_image(img, title, number, item):
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+
+    title_font_size = 52
+    item_font_size = 64
+
+    try:
+        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", title_font_size)
+        item_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", item_font_size)
+    except:
+        title_font = ImageFont.load_default()
+        item_font = ImageFont.load_default()
+
+    title_bbox = draw.textbbox((0, 0), title, font=title_font)
+    title_w = title_bbox[2] - title_bbox[0]
+    title_x = (w - title_w) // 2
+    title_y = 60
+
+    overlay_draw.rectangle([title_x - 15, title_y - 10, title_x + title_w + 15, title_y + title_font_size + 10], fill=(0, 0, 0, 160))
+    overlay_draw.text((title_x, title_y), title, font=title_font, fill=(255, 255, 255, 255))
+
+    item_text = str(number) + ". " + item
+    item_bbox = draw.textbbox((0, 0), item_text, font=item_font)
+    item_w = item_bbox[2] - item_bbox[0]
+    item_x = (w - item_w) // 2
+    item_y = h - 180
+
+    overlay_draw.rectangle([item_x - 15, item_y - 10, item_x + item_w + 15, item_y + item_font_size + 10], fill=(0, 0, 0, 180))
+    overlay_draw.text((item_x, item_y), item_text, font=item_font, fill=(255, 220, 0, 255))
+
+    img = img.convert("RGBA")
+    img = Image.alpha_composite(img, overlay)
+    return img.convert("RGB")
 
 def get_free_music(tmpdir):
     music_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
@@ -55,43 +97,6 @@ def get_free_music(tmpdir):
     except:
         return None
 
-def create_slide(img_path, number, item_text, title, slide_path, tmpdir, index):
-    title_file = os.path.join(tmpdir, "title_" + str(index) + ".txt")
-    item_file = os.path.join(tmpdir, "item_" + str(index) + ".txt")
-
-    with open(title_file, "w", encoding="utf-8") as f:
-        f.write(title)
-
-    with open(item_file, "w", encoding="utf-8") as f:
-        f.write(str(number) + ". " + item_text)
-
-    vf = (
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,"
-        "drawtext=textfile='" + title_file + "':fontsize=44:fontcolor=white:"
-        "x=(w-text_w)/2:y=80:"
-        "borderw=3:bordercolor=black:"
-        "box=1:boxcolor=black@0.6:boxborderw=10,"
-        "drawtext=textfile='" + item_file + "':fontsize=56:fontcolor=yellow:"
-        "x=(w-text_w)/2:y=h-160:"
-        "borderw=4:bordercolor=black:"
-        "box=1:boxcolor=black@0.7:boxborderw=14"
-    )
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-loop", "1",
-        "-i", img_path,
-        "-vf", vf,
-        "-t", "4",
-        "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
-        "-r", "30",
-        slide_path
-    ]
-    result = subprocess.run(cmd, capture_output=True)
-    return result
-
 @app.route("/create-video", methods=["POST"])
 def create_video_endpoint():
     try:
@@ -103,7 +108,7 @@ def create_video_endpoint():
         items = topic["items"]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            slide_videos = []
+            clips = []
 
             for i, item in enumerate(items):
                 number = 5 - i
@@ -113,60 +118,41 @@ def create_video_endpoint():
                 if not img_url:
                     img_url = get_pexels_image("nature landscape")
 
-                img_path = os.path.join(tmpdir, "img_" + str(i) + ".jpg")
-
                 if img_url:
-                    download_image(img_url, img_path)
+                    img = download_image(img_url)
                 else:
-                    subprocess.run([
-                        'ffmpeg', '-y', '-f', 'lavfi',
-                        '-i', 'color=c=darkblue:size=1080x1920:rate=30',
-                        '-frames:v', '1', img_path
-                    ], capture_output=True)
+                    img = Image.new("RGB", (1080, 1920), color=(0, 50, 100))
 
-                slide_path = os.path.join(tmpdir, "slide_" + str(i) + ".mp4")
-                create_slide(img_path, number, item, title, slide_path, tmpdir, i)
+                img = add_text_to_image(img, title, number, item)
 
-                if os.path.exists(slide_path):
-                    slide_videos.append(slide_path)
+                img_path = os.path.join(tmpdir, "slide_" + str(i) + ".jpg")
+                img.save(img_path, quality=95)
 
-            if not slide_videos:
-                return jsonify({"success": False, "error": "No slides created"}), 500
+                clip = ImageClip(img_path).set_duration(4)
+                clips.append(clip)
 
-            concat_file = os.path.join(tmpdir, "concat.txt")
-            with open(concat_file, "w") as f:
-                for sv in slide_videos:
-                    f.write("file '" + sv + "'\n")
+            if not clips:
+                return jsonify({"success": False, "error": "No clips created"}), 500
 
-            silent_video = os.path.join(tmpdir, "silent_video.mp4")
-            subprocess.run([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", concat_file, "-c", "copy", silent_video
-            ], capture_output=True)
+            final_clip = concatenate_videoclips(clips, method="compose")
 
             music_path = get_free_music(tmpdir)
-            final_video = os.path.join(tmpdir, "final_video.mp4")
+            if music_path:
+                audio = AudioFileClip(music_path).subclip(0, min(20, final_clip.duration))
+                audio = audio.volumex(0.3)
+                final_clip = final_clip.set_audio(audio)
 
-            if music_path and os.path.exists(music_path):
-                subprocess.run([
-                    "ffmpeg", "-y",
-                    "-i", silent_video,
-                    "-i", music_path,
-                    "-map", "0:v",
-                    "-map", "1:a",
-                    "-c:v", "copy",
-                    "-c:a", "aac",
-                    "-shortest",
-                    "-af", "volume=0.3",
-                    final_video
-                ], capture_output=True)
-            else:
-                os.rename(silent_video, final_video)
+            output_path = os.path.join(tmpdir, "final_video.mp4")
+            final_clip.write_videofile(
+                output_path,
+                fps=30,
+                codec="libx264",
+                audio_codec="aac",
+                verbose=False,
+                logger=None
+            )
 
-            if not os.path.exists(final_video):
-                return jsonify({"success": False, "error": "Final video not created"}), 500
-
-            with open(final_video, "rb") as f:
+            with open(output_path, "rb") as f:
                 video_bytes = f.read()
 
         return jsonify({
